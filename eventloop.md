@@ -61,7 +61,7 @@ if (aeApiCreate(eventLoop) == -1) goto err;
 
 accept绑定的是`acceptTcpHandler`函数，当客户端请求建立连接，就会在那里被accept然后绑定对应的read handler(`void readQueryFromClient(connection *conn)`)来处理客户端发送过来的命令/请求
 
-## acceptTcpHandler
+## readQueryFromClient
 
 当数据到达之后，首先是读，然后是解析，执行，最后是返回结果
 

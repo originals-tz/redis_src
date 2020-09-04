@@ -1,5 +1,7 @@
 # Learn Redis
 
+阅读工具: SourceTrail
+
 看redis的源码，首先需要明白redis的大致流程
 
 redis是一个缓存服务器，既然是服务器就必然会有以下的流程
