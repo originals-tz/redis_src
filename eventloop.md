@@ -59,46 +59,52 @@ if (aeApiCreate(eventLoop) == -1) goto err;
 
 ```
 
-accept绑定的是`acceptTcpHandler`函数，当客户端请求建立连接，就会在那里被accept然后绑定对应的read handler(`void readQueryFromClient(connection *conn)`)来处理客户端发送过来的命令/请求
+## Accept
+
+服务器的入口就是接受客户端连接的accept，accept绑定的是`acceptTcpHandler`函数，当客户端请求建立连接，就会在那里被accept然后绑定对应的read handler(`void readQueryFromClient(connection *conn)`)来处理客户端发送过来的命令/请求
+
+accpet之后，连接会对应一个client结构，里面绑定了一个redisDb，客户端的请求都会在那个db上执行
 
 ## readQueryFromClient
 
-当数据到达之后，首先是读，然后是解析，执行，最后是返回结果
+该函数是客户端所绑定的回调，当数据到达之后就会调用该函数，首先是读，然后是解析协议，执行命令，最后是返回结果，所对应的函数是
 
 - 读：readQueryFromClient
 - 解析：processCommand
 - 执行：call
-- 返回结果
+- 返回结果：会在执行指令的过程中调用addReply等函数
 
 ## call
+
+抛开其他的流程，最关键的就是执行指令的call，如下
 
 ```c
     /* Call the command. */
     dirty = server.dirty;
     updateCachedTime(0);
     start = server.ustime;
-    c->cmd->proc(c);
+    c->cmd->proc(c); //在这里调用cmd所绑定的handler
     duration = ustime()-start;
     dirty = server.dirty-dirty;
     if (dirty < 0) dirty = 0;
 ```
 
-在call里面，使用`c->cmd->proc`进行指令的执行，那么这个proc又是什么时候进行绑定的呢，答案是在ProcessCommand的时候
+在call里面，使用`c->cmd->proc`进行指令的处理，那么这个proc又是什么时候进行绑定的呢，答案是在ProcessCommand的时候
 
 ```c
-c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
+c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr); //找到该函数所绑定的handler
 
 // lookupCommand函数
 func lookupCommand(...)
 {
 	dictEntry *he;
 	...
-	he = dictFind(server.commands,key);
+	he = dictFind(server.commands,key); //handler是从全局的server里面找的
 	return he ? dictGetVal(he) : NULL;    
 }
 ```
 
-一开始，先在initServer初始化servier.commands这个表
+从上面看到，cmd是从server里面找到的，那么回头看就会发现，一开始就先在initServer初始化了servier.commands这个表
 
 ```c
     server.commands = dictCreate(&commandTableDictType,NULL);
@@ -106,7 +112,7 @@ func lookupCommand(...)
     populateCommandTable();
 ```
 
-其中populateCommandTable就是将硬编码的指令解析出来放到commands中，硬编码的表如下
+其中`populateCommandTable`就是将硬编码的指令解析出来放到commands中，硬编码的表如下，该表位于`server.c`的开头
 
 ```c
 
@@ -161,9 +167,9 @@ struct redisCommand {
 };
 ```
 
-可以看到，第二个参数就是该命令所绑定的handler，整个流程就是
+可以看到，第二个参数就是该命令所绑定的handler
 
-服务器生成 cmd-handler的表，accept客户端连接，读取客户端的请求，解析请求，然后找到对应的cmd所绑定的handler，进行处理，例如，客户端发送了一个get指令，那么就进入下面的handler中
+例如，客户端发送了一个get指令，那么就进入下面的handler中
 
 ```c
 int getGenericCommand(client *c) {
@@ -182,9 +188,9 @@ int getGenericCommand(client *c) {
 }
 ```
 
-在命令结束后，会将结果通关addReply放入对应的缓冲区中
+在命令结束后，会将结果通过addReply放入对应的缓冲区中
 
-在redis中，有一个beforesleep，每次进入eventloop前都会调用
+那么什么时候将数据发送到客户端呢？在redis中，有一个beforesleep，每次进入eventloop前都会调用
 
 ```
 /* This function gets called every time Redis is entering the
@@ -204,4 +210,12 @@ int getGenericCommand(client *c) {
 void beforeSleep(struct aeEventLoop *eventLoop);
 ```
 
-当命令处理完，将结果写入缓冲区，redis会在before sleep的时候将数据返回给客户端，在beforesleep里面会调用handleClientsWithPendingWritesUsingThreads，将结果写到客户端中
+当客户端的命令处理完后将结果写入缓冲区，redis会在beforesleep里面调用`handleClientsWithPendingWritesUsingThreads`等函数，将结果写到客户端中
+
+那么整个大致的流程就是
+
+- 服务器生成 cmd-handler的表
+- 新建一些事件，如超时，accept等，然后进入等待
+- 当连接到达，accept客户端连接，然后绑定对应的handler
+- 当数据到来，使用那个handler读取客户端的请求，接着解析请求，得到cmd，然后从表中找到cmd所绑定的handler，进行处理
+- 处理完毕后，进入beforesleep，将请求返回给客户端
