@@ -1,0 +1,17 @@
+site_name: RedisSrc
+pages:
+- Home : index.md
+- Docs: 
+  - Redis Command : cmd.md
+  - Redis EventLoop : eventloop.md
+theme: readthedocs
+
+markdown_extensions:
+  - admonition  # 提示块
+  - footnotes  # 脚注
+  - meta  # 定义元数据，通过文章上下文控制，如disqus
+  - codehilite:    # 代码高亮，显示行号
+      guess_lang: false
+      linenums: true
+  - toc:  # 锚点
+      permalink: true
