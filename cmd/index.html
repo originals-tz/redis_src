@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  <link rel="shortcut icon" href="../img/favicon.ico">
+  <title>Redis Command - RedisSrc</title>
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Redis Command";
+    var mkdocs_page_input_path = "cmd.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> RedisSrc</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+	<ul class="current">
+	  
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="..">Home</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Docs</span>
+    <ul class="subnav">
+                <li class=" current">
+                    
+    <a class="current" href="./">Redis Command</a>
+    <ul class="subnav">
+            
+    <li class="toctree-l3"><a href="#redis-command">Redis Command</a></li>
+    
+        <ul>
+        
+            <li><a class="toctree-l4" href="#db">db</a></li>
+        
+            <li><a class="toctree-l4" href="#get">Get</a></li>
+        
+            <li><a class="toctree-l4" href="#set">Set</a></li>
+        
+        </ul>
+    
+
+    </ul>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../eventloop/">Redis EventLoop</a>
+                </li>
+    </ul>
+	    </li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">RedisSrc</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>Docs &raquo;</li>
+        
+      
+    
+    <li>Redis Command</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="redis-command">Redis Command<a class="headerlink" href="#redis-command" title="Permanent link">&para;</a></h1>
+<p>在eventloop的那节，我们已经看到，所有命令的handler都存放在<code>server.c</code>中的<code>redisCommandTable</code>中</p>
+<p>因此，可以照着那里面所绑定的handler看下去，这样一来，就能知道每一个命令是如何处理的</p>
+<h2 id="db">db<a class="headerlink" href="#db" title="Permanent link">&para;</a></h2>
+<p>redis的命令都是操作在<code>redisDb</code>这个结构上的，该结构在<code>initServer</code>的时候被初始化到全局的server上，每次有新连接过来，就会绑定该db</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="k">typedef</span> <span class="k">struct</span> <span class="n">redisDb</span> <span class="p">{</span>
+    <span class="n">dict</span> <span class="o">*</span><span class="n">dict</span><span class="p">;</span>                 <span class="cm">/* The keyspace for this DB */</span>
+    <span class="n">dict</span> <span class="o">*</span><span class="n">expires</span><span class="p">;</span>              <span class="cm">/* Timeout of keys with a timeout set */</span>
+    <span class="n">dict</span> <span class="o">*</span><span class="n">blocking_keys</span><span class="p">;</span>        <span class="cm">/* Keys with clients waiting for data (BLPOP)*/</span>
+    <span class="n">dict</span> <span class="o">*</span><span class="n">ready_keys</span><span class="p">;</span>           <span class="cm">/* Blocked keys that received a PUSH */</span>
+    <span class="n">dict</span> <span class="o">*</span><span class="n">watched_keys</span><span class="p">;</span>         <span class="cm">/* WATCHED keys for MULTI/EXEC CAS */</span>
+    <span class="kt">int</span> <span class="n">id</span><span class="p">;</span>                     <span class="cm">/* Database ID */</span>
+    <span class="kt">long</span> <span class="kt">long</span> <span class="n">avg_ttl</span><span class="p">;</span>          <span class="cm">/* Average TTL, just for stats */</span>
+    <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">expires_cursor</span><span class="p">;</span> <span class="cm">/* Cursor of the active expire cycle. */</span>
+    <span class="n">list</span> <span class="o">*</span><span class="n">defrag_later</span><span class="p">;</span>         <span class="cm">/* List of key names to attempt to defrag one by one, gradually. */</span>
+<span class="p">}</span> <span class="n">redisDb</span><span class="p">;</span>
+</pre></div>
+</td></tr></table>
+
+<p>可以看到，存储数据的结构就是<code>dict</code>，也就是一个map，类似于<code>std::map&lt;std::string, void*&gt;</code>,知道怎么存之后，一切都简单起来，我们先抛开一些高级的特性，例如超时等，简单看下各个操作</p>
+<h2 id="get">Get<a class="headerlink" href="#get" title="Permanent link">&para;</a></h2>
+<p>get所绑定的是<code>getCommand</code>，整个流程也很简单，查找，返回</p>
+<h2 id="set">Set<a class="headerlink" href="#set" title="Permanent link">&para;</a></h2>
+<p>set则比较复杂点，从顶端的调用开始，首先要判断这个key是否存在，如果不存在，则添加，如果存在，则覆盖</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">genericSetKey</span><span class="p">(</span><span class="n">client</span> <span class="o">*</span><span class="n">c</span><span class="p">,</span> <span class="n">redisDb</span> <span class="o">*</span><span class="n">db</span><span class="p">,</span> <span class="n">robj</span> <span class="o">*</span><span class="n">key</span><span class="p">,</span> <span class="n">robj</span> <span class="o">*</span><span class="n">val</span><span class="p">,</span> <span class="kt">int</span> <span class="n">keepttl</span><span class="p">,</span> <span class="kt">int</span> <span class="n">signal</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">lookupKeyWrite</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">)</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">dbAdd</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">,</span><span class="n">val</span><span class="p">);</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="n">dbOverwrite</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">,</span><span class="n">val</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">incrRefCount</span><span class="p">(</span><span class="n">val</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">keepttl</span><span class="p">)</span> <span class="n">removeExpire</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">signal</span><span class="p">)</span> <span class="n">signalModifiedKey</span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</td></tr></table>
+
+<p>那为何要判断是否存在呢，不管三七二十一直接覆盖不就完事了吗？</p>
+<p>当一个结果一样的行为被分成了两个：add和overwrite，那么就说明这两个操作可能会存在性能上的差异抑或是，前提(key是否存在)对整个系统存在一个整体的影响，因此需要两种不同的行为来分别处理</p>
+<p>首先看判断函数<code>lookupKeyWrite</code></p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3
+4
+5
+6
+7
+8</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="n">robj</span> <span class="o">*</span><span class="nf">lookupKeyWriteWithFlags</span><span class="p">(</span><span class="n">redisDb</span> <span class="o">*</span><span class="n">db</span><span class="p">,</span> <span class="n">robj</span> <span class="o">*</span><span class="n">key</span><span class="p">,</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">expireIfNeeded</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">lookupKey</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">key</span><span class="p">,</span><span class="n">flags</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">robj</span> <span class="o">*</span><span class="nf">lookupKeyWrite</span><span class="p">(</span><span class="n">redisDb</span> <span class="o">*</span><span class="n">db</span><span class="p">,</span> <span class="n">robj</span> <span class="o">*</span><span class="n">key</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">lookupKeyWriteWithFlags</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">LOOKUP_NONE</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</td></tr></table>
+
+<p>可以看到，在访问key的时候，会有一个<code>expireIfNeeded</code>的行为，这个是一个惰性删除过期key的行为，意图是让lookupKey不会接触到过期的key</p>
+<p>当key不存在的时候，直接添加一个key，也就是直接往dict里面添加东西</p>
+<p>当key存在的时候，则会先拿到当前存在的key，将其value进行替换，而旧的value，则由策略来决定是否删除，因为，删除一个占用空间很大的value是非常消耗性能的(在eventloop里面我们也看到，redis处理客户端请求是单线程的，因此如果一个指令执行很久，那么就会阻塞到其他的客户端请求)，<strong>这就是add和overwrite的不同之处</strong></p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">dbOverwrite</span><span class="p">(</span><span class="n">redisDb</span> <span class="o">*</span><span class="n">db</span><span class="p">,</span> <span class="n">robj</span> <span class="o">*</span><span class="n">key</span><span class="p">,</span> <span class="n">robj</span> <span class="o">*</span><span class="n">val</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">dictEntry</span> <span class="o">*</span><span class="n">de</span> <span class="o">=</span> <span class="n">dictFind</span><span class="p">(</span><span class="n">db</span><span class="o">-&gt;</span><span class="n">dict</span><span class="p">,</span><span class="n">key</span><span class="o">-&gt;</span><span class="n">ptr</span><span class="p">);</span>
+
+    <span class="n">serverAssertWithInfo</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="n">key</span><span class="p">,</span><span class="n">de</span> <span class="o">!=</span> <span class="nb">NULL</span><span class="p">);</span>
+    <span class="n">dictEntry</span> <span class="n">auxentry</span> <span class="o">=</span> <span class="o">*</span><span class="n">de</span><span class="p">;</span>
+    <span class="n">robj</span> <span class="o">*</span><span class="n">old</span> <span class="o">=</span> <span class="n">dictGetVal</span><span class="p">(</span><span class="n">de</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">maxmemory_policy</span> <span class="o">&amp;</span> <span class="n">MAXMEMORY_FLAG_LFU</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">val</span><span class="o">-&gt;</span><span class="n">lru</span> <span class="o">=</span> <span class="n">old</span><span class="o">-&gt;</span><span class="n">lru</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">dictSetVal</span><span class="p">(</span><span class="n">db</span><span class="o">-&gt;</span><span class="n">dict</span><span class="p">,</span> <span class="n">de</span><span class="p">,</span> <span class="n">val</span><span class="p">);</span>
+
+    <span class="c1">// 惰性释放</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">lazyfree_lazy_server_del</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">freeObjAsync</span><span class="p">(</span><span class="n">old</span><span class="p">);</span>
+        <span class="n">dictSetVal</span><span class="p">(</span><span class="n">db</span><span class="o">-&gt;</span><span class="n">dict</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">auxentry</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="n">dictFreeVal</span><span class="p">(</span><span class="n">db</span><span class="o">-&gt;</span><span class="n">dict</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">auxentry</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</td></tr></table>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../eventloop/" class="btn btn-neutral float-right" title="Redis EventLoop">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href=".." class="btn btn-neutral" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href=".." style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../eventloop/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+
+</body>
+</html>

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  <link rel="shortcut icon" href="../img/favicon.ico">
+  <title>Redis EventLoop - RedisSrc</title>
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Redis EventLoop";
+    var mkdocs_page_input_path = "eventloop.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> RedisSrc</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+	<ul class="current">
+	  
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="..">Home</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Docs</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../cmd/">Redis Command</a>
+                </li>
+                <li class=" current">
+                    
+    <a class="current" href="./">Redis EventLoop</a>
+    <ul class="subnav">
+            
+    <li class="toctree-l3"><a href="#eventloop">EventLoop</a></li>
+    
+        <ul>
+        
+            <li><a class="toctree-l4" href="#initserver">InitServer</a></li>
+        
+            <li><a class="toctree-l4" href="#accept">Accept</a></li>
+        
+            <li><a class="toctree-l4" href="#readqueryfromclient">readQueryFromClient</a></li>
+        
+            <li><a class="toctree-l4" href="#call">call</a></li>
+        
+        </ul>
+    
+
+    </ul>
+                </li>
+    </ul>
+	    </li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">RedisSrc</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>Docs &raquo;</li>
+        
+      
+    
+    <li>Redis EventLoop</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="eventloop">EventLoop<a class="headerlink" href="#eventloop" title="Permanent link">&para;</a></h1>
+<p>eventloop是Linux服务器的核心，redis也不例外</p>
+<p>在源码之前，可以根据经验猜测一下redis是如何使用eventloop的</p>
+<ul>
+<li>创建一个监听事件，绑定对应的处理函数，用于处理客户端连接</li>
+<li>当连接建立，就为客户端生成一个新的事件，然后绑定对应的处理函数，由于redis是一个缓存服务器，那么客户端所做的事情无非就两类，修改与读取</li>
+</ul>
+<p>redis的eventloop就在server.c中的main函数里面被启动了，如下</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="p">...</span>
+    <span class="n">aeMain</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">el</span><span class="p">);</span>
+    <span class="n">aeDeleteEventLoop</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">el</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">aeMain</span><span class="p">(</span><span class="n">aeEventLoop</span> <span class="o">*</span><span class="n">eventLoop</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">eventLoop</span><span class="o">-&gt;</span><span class="n">stop</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">while</span> <span class="p">(</span><span class="o">!</span><span class="n">eventLoop</span><span class="o">-&gt;</span><span class="n">stop</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">aeProcessEvents</span><span class="p">(</span><span class="n">eventLoop</span><span class="p">,</span> <span class="n">AE_ALL_EVENTS</span><span class="o">|</span>
+                                   <span class="n">AE_CALL_BEFORE_SLEEP</span><span class="o">|</span>
+                                   <span class="n">AE_CALL_AFTER_SLEEP</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</td></tr></table>
+
+<p>从入参可以知道，一些服务器的信息，例如ip，端口之类的，肯定是绑定在里面，果不其然，在启动之前，会调用一个initServer来初始化一些基本的信息</p>
+<h2 id="initserver">InitServer<a class="headerlink" href="#initserver" title="Permanent link">&para;</a></h2>
+<p>在redis中，server是作为全局变量定义的</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="cm">/* Global vars */</span>
+<span class="k">struct</span> <span class="n">redisServer</span> <span class="n">server</span><span class="p">;</span> <span class="cm">/* Server global state */</span>
+</pre></div>
+</td></tr></table>
+
+<p>在函数InitServer中，会找到服务器的标准套路：创建eventloop，创建事件，绑定处理函数，注册到eventloop中，如下</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="k">if</span> <span class="p">(</span><span class="n">aeApiCreate</span><span class="p">(</span><span class="n">eventLoop</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="k">goto</span> <span class="n">err</span><span class="p">;</span>   
+<span class="p">...</span>
+    <span class="cm">/* Create an event handler for accepting new connections in TCP and Unix</span>
+<span class="cm">     * domain sockets. */</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">server</span><span class="p">.</span><span class="n">ipfd_count</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">aeCreateFileEvent</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">el</span><span class="p">,</span> <span class="n">server</span><span class="p">.</span><span class="n">ipfd</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">AE_READABLE</span><span class="p">,</span>
+            <span class="n">acceptTcpHandler</span><span class="p">,</span><span class="nb">NULL</span><span class="p">)</span> <span class="o">==</span> <span class="n">AE_ERR</span><span class="p">)</span>
+            <span class="p">{</span>
+                <span class="n">serverPanic</span><span class="p">(</span>
+                    <span class="s">&quot;Unrecoverable error creating server.ipfd file event.&quot;</span><span class="p">);</span>
+            <span class="p">}</span>
+    <span class="p">}</span>
+</pre></div>
+</td></tr></table>
+
+<h2 id="accept">Accept<a class="headerlink" href="#accept" title="Permanent link">&para;</a></h2>
+<p>服务器的入口就是接受客户端连接的accept，accept绑定的是<code>acceptTcpHandler</code>函数，当客户端请求建立连接，就会在那里被accept然后绑定对应的read handler(<code>void readQueryFromClient(connection *conn)</code>)来处理客户端发送过来的命令/请求</p>
+<p>accpet之后，连接会对应一个client结构，里面绑定了一个redisDb，客户端的请求都会在那个db上执行</p>
+<h2 id="readqueryfromclient">readQueryFromClient<a class="headerlink" href="#readqueryfromclient" title="Permanent link">&para;</a></h2>
+<p>该函数是客户端所绑定的回调，当数据到达之后就会调用该函数，首先是读，然后是解析协议，执行命令，最后是返回结果，所对应的函数是</p>
+<ul>
+<li>读：readQueryFromClient</li>
+<li>解析：processCommand</li>
+<li>执行：call</li>
+<li>返回结果：会在执行指令的过程中调用addReply等函数</li>
+</ul>
+<h2 id="call">call<a class="headerlink" href="#call" title="Permanent link">&para;</a></h2>
+<p>抛开其他的流程，最关键的就是执行指令的call，如下</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3
+4
+5
+6
+7
+8</pre></div></td><td class="code"><div class="codehilite"><pre><span></span>    <span class="cm">/* Call the command. */</span>
+    <span class="n">dirty</span> <span class="o">=</span> <span class="n">server</span><span class="p">.</span><span class="n">dirty</span><span class="p">;</span>
+    <span class="n">updateCachedTime</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">server</span><span class="p">.</span><span class="n">ustime</span><span class="p">;</span>
+    <span class="n">c</span><span class="o">-&gt;</span><span class="n">cmd</span><span class="o">-&gt;</span><span class="n">proc</span><span class="p">(</span><span class="n">c</span><span class="p">);</span> <span class="c1">//在这里调用cmd所绑定的handler</span>
+    <span class="n">duration</span> <span class="o">=</span> <span class="n">ustime</span><span class="p">()</span><span class="o">-</span><span class="n">start</span><span class="p">;</span>
+    <span class="n">dirty</span> <span class="o">=</span> <span class="n">server</span><span class="p">.</span><span class="n">dirty</span><span class="o">-</span><span class="n">dirty</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">dirty</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="n">dirty</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</pre></div>
+</td></tr></table>
+
+<p>在call里面，使用<code>c-&gt;cmd-&gt;proc</code>进行指令的处理，那么这个proc又是什么时候进行绑定的呢，答案是在ProcessCommand的时候</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="n">c</span><span class="o">-&gt;</span><span class="n">cmd</span> <span class="o">=</span> <span class="n">c</span><span class="o">-&gt;</span><span class="n">lastcmd</span> <span class="o">=</span> <span class="n">lookupCommand</span><span class="p">(</span><span class="n">c</span><span class="o">-&gt;</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-&gt;</span><span class="n">ptr</span><span class="p">);</span> <span class="c1">//找到该函数所绑定的handler</span>
+
+<span class="c1">// lookupCommand函数</span>
+<span class="n">func</span> <span class="nf">lookupCommand</span><span class="p">(...)</span>
+<span class="p">{</span>
+    <span class="n">dictEntry</span> <span class="o">*</span><span class="n">he</span><span class="p">;</span>
+    <span class="p">...</span>
+    <span class="n">he</span> <span class="o">=</span> <span class="n">dictFind</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">commands</span><span class="p">,</span><span class="n">key</span><span class="p">);</span> <span class="c1">//handler是从全局的server里面找的</span>
+    <span class="k">return</span> <span class="n">he</span> <span class="o">?</span> <span class="n">dictGetVal</span><span class="p">(</span><span class="n">he</span><span class="p">)</span> <span class="o">:</span> <span class="nb">NULL</span><span class="p">;</span>    
+<span class="p">}</span>
+</pre></div>
+</td></tr></table>
+
+<p>从上面看到，cmd是从server里面找到的，那么回头看就会发现，一开始就先在initServer初始化了servier.commands这个表</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre>1
+2
+3</pre></div></td><td class="code"><div class="codehilite"><pre><span></span>    <span class="n">server</span><span class="p">.</span><span class="n">commands</span> <span class="o">=</span> <span class="n">dictCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">commandTableDictType</span><span class="p">,</span><span class="nb">NULL</span><span class="p">);</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">orig_commands</span> <span class="o">=</span> <span class="n">dictCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">commandTableDictType</span><span class="p">,</span><span class="nb">NULL</span><span class="p">);</span>
+    <span class="n">populateCommandTable</span><span class="p">();</span>
+</pre></div>
+</td></tr></table>
+
+<p>其中<code>populateCommandTable</code>就是将硬编码的指令解析出来放到commands中，硬编码的表如下，该表位于<code>server.c</code>的开头</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">redisCommand</span> <span class="n">redisCommandTable</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">{</span><span class="s">&quot;module&quot;</span><span class="p">,</span><span class="n">moduleCommand</span><span class="p">,</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span>
+     <span class="s">&quot;admin no-script&quot;</span><span class="p">,</span>
+     <span class="mi">0</span><span class="p">,</span><span class="nb">NULL</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">},</span>
+
+    <span class="p">{</span><span class="s">&quot;get&quot;</span><span class="p">,</span><span class="n">getCommand</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span>
+     <span class="s">&quot;read-only fast @string&quot;</span><span class="p">,</span>
+     <span class="mi">0</span><span class="p">,</span><span class="nb">NULL</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">},</span>
+
+    <span class="cm">/* Note that we can&#39;t flag set as fast, since it may perform an</span>
+<span class="cm">     * implicit DEL of a large key. */</span>
+    <span class="p">{</span><span class="s">&quot;set&quot;</span><span class="p">,</span><span class="n">setCommand</span><span class="p">,</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span>
+     <span class="s">&quot;write use-memory @string&quot;</span><span class="p">,</span>
+     <span class="mi">0</span><span class="p">,</span><span class="nb">NULL</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">},</span>
+
+    <span class="p">{</span><span class="s">&quot;setnx&quot;</span><span class="p">,</span><span class="n">setnxCommand</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span>
+     <span class="s">&quot;write use-memory fast @string&quot;</span><span class="p">,</span>
+     <span class="mi">0</span><span class="p">,</span><span class="nb">NULL</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">},</span>
+
+    <span class="p">{</span><span class="s">&quot;setex&quot;</span><span class="p">,</span><span class="n">setexCommand</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span>
+     <span class="s">&quot;write use-memory @string&quot;</span><span class="p">,</span>
+     <span class="mi">0</span><span class="p">,</span><span class="nb">NULL</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">},</span>
+     <span class="p">...</span>
+<span class="p">};</span>
+</pre></div>
+</td></tr></table>
+
+<p>其中redisCommand的结构如下</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">redisCommand</span> <span class="p">{</span>
+    <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">;</span>
+    <span class="n">redisCommandProc</span> <span class="o">*</span><span class="n">proc</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">arity</span><span class="p">;</span>
+    <span class="kt">char</span> <span class="o">*</span><span class="n">sflags</span><span class="p">;</span>   <span class="cm">/* Flags as string representation, one char per flag. */</span>
+    <span class="kt">uint64_t</span> <span class="n">flags</span><span class="p">;</span> <span class="cm">/* The actual flags, obtained from the &#39;sflags&#39; field. */</span>
+    <span class="cm">/* Use a function to determine keys arguments in a command line.</span>
+<span class="cm">     * Used for Redis Cluster redirect. */</span>
+    <span class="n">redisGetKeysProc</span> <span class="o">*</span><span class="n">getkeys_proc</span><span class="p">;</span>
+    <span class="cm">/* What keys should be loaded in background when calling this command? */</span>
+    <span class="kt">int</span> <span class="n">firstkey</span><span class="p">;</span> <span class="cm">/* The first argument that&#39;s a key (0 = no keys) */</span>
+    <span class="kt">int</span> <span class="n">lastkey</span><span class="p">;</span>  <span class="cm">/* The last argument that&#39;s a key */</span>
+    <span class="kt">int</span> <span class="n">keystep</span><span class="p">;</span>  <span class="cm">/* The step between first and last key */</span>
+    <span class="kt">long</span> <span class="kt">long</span> <span class="n">microseconds</span><span class="p">,</span> <span class="n">calls</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">id</span><span class="p">;</span>     <span class="cm">/* Command ID. This is a progressive ID starting from 0 that</span>
+<span class="cm">                   is assigned at runtime, and is used in order to check</span>
+<span class="cm">                   ACLs. A connection is able to execute a given command if</span>
+<span class="cm">                   the user associated to the connection has this command</span>
+<span class="cm">                   bit set in the bitmap of allowed commands. */</span>
+<span class="p">};</span>
+</pre></div>
+</td></tr></table>
+
+<p>可以看到，第二个参数就是该命令所绑定的handler</p>
+<p>例如，客户端发送了一个get指令，那么就进入下面的handler中</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14</pre></div></td><td class="code"><div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">getGenericCommand</span><span class="p">(</span><span class="n">client</span> <span class="o">*</span><span class="n">c</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">robj</span> <span class="o">*</span><span class="n">o</span><span class="p">;</span>
+
+    <span class="k">if</span> <span class="p">((</span><span class="n">o</span> <span class="o">=</span> <span class="n">lookupKeyReadOrReply</span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="n">c</span><span class="o">-&gt;</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="n">shared</span><span class="p">.</span><span class="n">null</span><span class="p">[</span><span class="n">c</span><span class="o">-&gt;</span><span class="n">resp</span><span class="p">]))</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">C_OK</span><span class="p">;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">o</span><span class="o">-&gt;</span><span class="n">type</span> <span class="o">!=</span> <span class="n">OBJ_STRING</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">addReply</span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="n">shared</span><span class="p">.</span><span class="n">wrongtypeerr</span><span class="p">);</span>
+        <span class="k">return</span> <span class="n">C_ERR</span><span class="p">;</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="n">addReplyBulk</span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="n">o</span><span class="p">);</span>
+        <span class="k">return</span> <span class="n">C_OK</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</td></tr></table>
+
+<p>在命令结束后，会将结果通过addReply放入对应的缓冲区中</p>
+<p>那么什么时候将数据发送到客户端呢？在redis中，有一个beforesleep，每次进入eventloop前都会调用</p>
+<table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15</pre></div></td><td class="code"><div class="codehilite"><pre><span></span>/* This function gets called every time Redis is entering the
+ * main loop of the event driven library, that is, before to sleep
+ * for ready file descriptors.
+ *
+ * Note: This function is (currently) called from two functions:
+ * 1. aeMain - The main server loop
+ * 2. processEventsWhileBlocked - Process clients during RDB/AOF load
+ *
+ * If it was called from processEventsWhileBlocked we don&#39;t want
+ * to perform all actions (For example, we don&#39;t want to expire
+ * keys), but we do need to perform some actions.
+ *
+ * The most important is freeClientsInAsyncFreeQueue but we also
+ * call some other low-risk functions. */
+void beforeSleep(struct aeEventLoop *eventLoop);
+</pre></div>
+</td></tr></table>
+
+<p>当客户端的命令处理完后将结果写入缓冲区，redis会在beforesleep里面调用<code>handleClientsWithPendingWritesUsingThreads</code>等函数，将结果写到客户端中</p>
+<p>那么整个大致的流程就是</p>
+<ul>
+<li>服务器生成 cmd-handler的表</li>
+<li>新建一些事件，如超时，accept等，然后进入等待</li>
+<li>当连接到达，accept客户端连接，然后绑定对应的handler</li>
+<li>当数据到来，使用那个handler读取客户端的请求，接着解析请求，得到cmd，然后从表中找到cmd所绑定的handler，进行处理</li>
+<li>处理完毕后，进入beforesleep，将请求返回给客户端</li>
+</ul>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+      
+        <a href="../cmd/" class="btn btn-neutral" title="Redis Command"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../cmd/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+    </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+
+</body>
+</html>
